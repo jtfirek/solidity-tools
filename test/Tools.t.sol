@@ -6,6 +6,11 @@ import {Test, console} from "forge-std/Test.sol";
 import "../lib/openzeppelin-contracts/contracts/governance/TimelockController.sol";
 import "../lib/openzeppelin-contracts/contracts/utils/Strings.sol";
 
+interface iLiquifier {
+    function timeBoundCap(address _token) external view returns (uint256);
+    function totalCap(address _token) external view returns (uint256);
+}
+
 contract Tools is Test { 
 
     // - stimulates a timelock transaction
@@ -15,10 +20,11 @@ contract Tools is Test {
         vm.createSelectFork(vm.envString("MAINNET_RPC"));
     
         TimelockController etherfiTimelock = TimelockController(payable(0x9f26d4C958fD811A1F59B01B86Be7dFFc9d20761));
+        address timelockOwner = 0xcdd57D11476c22d265722F68390b036f3DA48c21;
 
         /// Detail the transaction to be executed here ///
         /// ******************************************* ///
-        bytes memory data = abi.encodeWithSignature("updateWhitelistedToken(address,bool)", 0xDc400f3da3ea5Df0B7B6C127aE2e54CE55644CF3, false);
+        bytes memory data = abi.encodeWithSignature("updateDepositCap(address,uint32,uint32)", 0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84, 6_000, 1_000_000);
         address target = 0x9FFDF407cDe9a93c47611799DA23924Af3EF764F;
         uint256 value = 0;
         /// ******************************************* ///
@@ -27,14 +33,21 @@ contract Tools is Test {
         bytes32 salt = 0x0000000000000000000000000000000000000000000000000000000000000000;
         uint256 delay = 259200;
 
-        // useful if you like to test just the transction without the gnosis
-        // vm.startPrank(0xcdd57D11476c22d265722F68390b036f3DA48c21);
+        // simulation the transction without the gnosis
+        // vm.startPrank(timelockOwner);
         // etherfiTimelock.schedule(target, value, data, predecessor, salt, delay);
         // vm.warp(block.timestamp + delay + 1);
         // etherfiTimelock.execute(target, value, data, predecessor, salt);
+        // vm.stopPrank();
+
+        // Test state before
+        uint256 timeboundCap = iLiquifier(target).timeBoundCap(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
+        uint256 totalCap = iLiquifier(target).totalCap(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
+        console.log("stETH timebound cap before: ", timeboundCap);
+        console.log("stETH total cap before: ", totalCap);
 
         // Generate the gnosis transactions
-        string memory timelockTarget = iToHex(abi.encodePacked(0x9f26d4C958fD811A1F59B01B86Be7dFFc9d20761));
+        string memory timelockTarget = iToHex(abi.encodePacked(address(etherfiTimelock)));
         string memory scheduleTransactionData = iToHex(abi.encodeWithSignature("schedule(address,uint256,bytes,bytes32,bytes32,uint256)", target, value, data, predecessor, salt, delay));
         string memory executeTransactionData = iToHex(abi.encodeWithSignature("execute(address,uint256,bytes,bytes32,bytes32)", target, value, data, predecessor, salt));
 
@@ -47,12 +60,15 @@ contract Tools is Test {
         vm.writeJson(gnosisExecuteTransaction, "./executeTransaction.json");
 
         // Execute the gnosis transactions
-        executeGnosisTransactionBundle("./scheduleTransaction.json", 0xcdd57D11476c22d265722F68390b036f3DA48c21);
+        executeGnosisTransactionBundle("./scheduleTransaction.json", timelockOwner);
         vm.warp(block.timestamp + delay + 1);
-        executeGnosisTransactionBundle("./executeTransaction.json", 0xcdd57D11476c22d265722F68390b036f3DA48c21);
+        executeGnosisTransactionBundle("./executeTransaction.json", timelockOwner);
 
         // Test state changes
-
+        timeboundCap = iLiquifier(target).timeBoundCap(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
+        totalCap = iLiquifier(target).totalCap(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
+        console.log("stETH timebound cap after: ", timeboundCap);
+        console.log("stETH total cap after: ", totalCap);
     }
 
 
